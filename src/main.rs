@@ -1,31 +1,65 @@
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-use cursive::Cursive;
-fn main() -> io::Result<()> {
-    let args: Vec<String> = env::args().collect();
-    let dir_path = Path::new(&args[1]);
+use std::io::{self, Write};
+use std::path::Path;
+use chrono::Local;
 
-    let root_fm_path = dir_path.join(".RootFM");
-    let mut root_fm_data = String::new();
+fn create_directory_with_metadata(name: &str) -> Result<(), io::Error> {
+    fs::create_dir(name)?;
 
-    if root_fm_path.exists() {
-        let root_fm_file = File::open(root_fm_path)?;
-        let mut root_fm_reader = BufReader::new(root_fm_file);
-        root_fm_reader.read_line(&mut root_fm_data)?;
-        println!("{}", root_fm_data.trim());
-
-        // TODO: Prompt user for action (create sub-directory, view data, etc.)
-    } else {
-        let mut root_fm_file = File::create(root_fm_path)?;
-        let mut root_fm_writer = io::stdout();
-
-        println!("Enter data for directory '{}':", dir_path.display());
-        io::copy(&mut io::stdin(), &mut root_fm_writer)?;
-
-        root_fm_file.write_all(root_fm_data.as_bytes())?;
-    }
+    let metadata_file = format!(".{}.RootFM", name);
+    let mut file = File::create(&metadata_file)?;
+    file.write_all(b"Put your metadata here")?;
 
     Ok(())
+}
+
+fn view_directory_metadata(name: &str) -> Result<(), io::Error> {
+    let metadata_file = format!(".{}.RootFM", name);
+    let file_contents = fs::read_to_string(&metadata_file)?;
+    println!("Metadata for directory '{}': {}", name, file_contents);
+
+    Ok(())
+}
+
+fn print_help() {
+    println!("Usage: fm [command] [directory_name]");
+    println!("Commands:");
+    println!("  create    Create a new directory with metadata");
+    println!("  view      View metadata of an existing directory");
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 3 {
+        if args.len() == 2 {
+            println!("Error: Directory name is missing.");
+        } else {
+            print_help();
+        }
+        return;
+    }
+
+    let command = &args[1];
+    let directory_name = &args[2];
+
+    match command.as_str() {
+        "create" => {
+            match create_directory_with_metadata(directory_name) {
+                Ok(_) => {
+                    let timestamp = Local::now();
+                    println!("Directory '{}' created successfully at {}.", directory_name, timestamp);
+                }
+                Err(e) => eprintln!("Error creating directory: {}", e),
+            }
+        }
+        "view" => {
+            view_directory_metadata(directory_name)
+                .unwrap_or_else(|e| eprintln!("Error viewing directory metadata: {}", e));
+        }
+        _ => {
+            println!("Error: Invalid command '{}'", command);
+            print_help();
+        }
+    }
 }
