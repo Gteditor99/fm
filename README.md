@@ -2,16 +2,15 @@
 
 # FM (File Manager)
 
-FM (File Manager) is a cross-platform command-line tool written in Rust that provides a user-friendly interface for managing directories and their corresponding metadata files.
+FM (File Manager) is a cross-platform command-line tool written in Rust that provides a user-friendly interface to browse through files and directories on your system.
 
 <div align="left">
 
 ## Features
 
-- Create directories and generate `.RootFM` files to store directory-specific data.
-- View and edit directory metadata using the intuitive TUI (Text User Interface).
-- Create subdirectories within existing directories, each with its own `.SubFM` file.
-- Cross-platform compatibility: FM works seamlessly on Windows, macOS, and Linux.
+- VIM-like keybindings for navigation (hjkl)
+- Written in Rust for speed and portability
+- Stylish Text User Interface (TUI) using [ratatui](https://github.com/ratatui-org/ratatui)
 
 ## Installation
 
@@ -19,23 +18,19 @@ To install FM, you'll need to have Rust installed on your system. If you don't h
 
 Once Rust is installed, open your command prompt or terminal and run the following command:
 
-`cargo install fm-cli`
+```bash
+cargo install fm-cli
+```
 
 This will install FM globally on your system.
 
 ## Usage
 
-To create a new directory using FM, run the following command:
+To use `fm`, simply run the following command:
 
-`fm create Project001`
-
-This will create a directory named `Project001` and generate a corresponding `.RootFM` file to store metadata.
-
-To view and edit the metadata of an existing directory, navigate to the directory in your command prompt or terminal and run:
-
-`fm view`
-
-This will open the TUI interface where you can modify the directory-specific data.
+```bash
+fm-cli
+```
 
 <div align="center">
 

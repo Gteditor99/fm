@@ -1,13 +1,15 @@
 [package]
 name = "fm-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-description = "cross-platform Rust command-line tool for managing directories"
+description = "cross-platform Rust command-line tool for browsing your filesystem"
 license = "MIT"
 repository = "https://github.com/gteditor99/fm"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 chrono = "0.4.24"
+crossterm = "0.27.0"
+ratatui = "0.22.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.96"

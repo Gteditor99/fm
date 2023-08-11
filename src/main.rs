@@ -1,167 +1,141 @@
-use std::env;
-use std::fs::{self, File};
-use std::io::{self, Write};
-use std::path::Path;
-use serde::{Serialize, Deserialize};
+use std::fs;
+use std::io::{self, stdout, Write};
+use std::path::PathBuf;
 
-#[derive(Serialize, Deserialize)]
-struct DirectoryMetadata {
-    name: String,
-    description: String,
-}
+use crossterm::event::{self, Event, KeyCode};
+use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::{Block, Borders, List, ListItem};
+use ratatui::widgets::Paragraph;
+use ratatui::text::Text;
+use ratatui::Terminal;
+use ratatui::text::Span;
+use serde_json::error;
 
-fn create_directory_with_metadata(name: &str, description: &str) -> Result<(), io::Error> {
-    fs::create_dir(name)?;
+fn main() -> io::Result<()> {
+    let mut stdout = io::stdout();
 
-    let metadata_file = format!("{}/.RootFM", name);
-    let mut file = File::create(&metadata_file)?;
+    // Clear the screen
+    crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All))?;
 
-    let metadata = DirectoryMetadata {
-        name: name.to_owned(),
-        description: description.to_owned(),
-    };
+    // Get the files in the current directory
+    let mut files: Vec<PathBuf> = fs::read_dir(".")?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .collect();
 
-    let serialized_metadata = serde_json::to_string(&metadata)?;
+    // Initialize the terminal
+    let stdout = io::stdout();
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
 
-    file.write_all(serialized_metadata.as_bytes())?;
+    let mut selected_files = vec![false; files.len()];
+    let mut selection_index = 0;
+    let mut exit = false;
+    let mut error_message = String::new();
+    loop {
+        // Draw the UI
+        terminal.draw(|frame| {
+            // Create a list widget for the files
+            let items: Vec<ListItem> = files.iter().enumerate().map(|(i, file)| {
+                let style = if selected_files[i] {
+                    Style::default().add_modifier(Modifier::REVERSED)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(file.display().to_string()).style(style)
+            }).collect();
 
-    Ok(())
-}
+            let files_list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title("Files"))
+                .highlight_style(Style::default().fg(Color::Black).bg(Color::White))
+                .highlight_symbol("> ");
 
-fn view_directory_metadata(name: &str) -> Result<(), io::Error> {
-    let metadata_file = format!("{}/.RootFM", name);
-    let file_contents = fs::read_to_string(&metadata_file)?;
-    let metadata: DirectoryMetadata = serde_json::from_str(&file_contents)?;
+            let error_message_span = Span::styled(
+                &error_message,
+                Style::default().fg(Color::Red),
+            );
 
-    println!("Metadata for directory '{}':", name);
-    println!("Name: {}", metadata.name);
-    println!("Description: {}", metadata.description);
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(70), Constraint::Percentage(30)].as_ref())
+                .split(frame.size());
 
-    Ok(())
-}
+            frame.render_widget(files_list, chunks[0]);
 
-// fn remove_directory_with_metadata(name: &str) -> Result<(), io::Error> {
-//     let metadata_file = format!("{}/.RootFM", name);
-//     fs::remove_dir_all(name)?;
-//     fs::remove_file(metadata_file)?;
+            let error_message_paragraph = Paragraph::new(error_message_span);
+            frame.render_widget(error_message_paragraph, chunks[1]);
+            
+        })?;
 
-//     Ok(())
-// }
-
-//err: Error removing directory: The system cannot find the path specified. (os error 3)
-
-fn remove_directory_with_metadata(name: &str) -> Result<(), io::Error> {
-    let metadata_file = format!("{}/.RootFM", name);
-    fs::remove_file(metadata_file)?;
-    fs::remove_dir_all(name)?;
-
-    Ok(())
-}
-
-
-fn list_directories_with_metadata() -> Result<(), io::Error> {
-    let current_dir = env::current_dir()?;
-    let entries = fs::read_dir(&current_dir)?;
-
-    let mut found_directory = false;
-
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.is_dir() {
-                let metadata_file = path.join(".RootFM");
-                if metadata_file.is_file() {
-                    if let Some(dir_name) = path.file_name() {
-                        let file_contents = fs::read_to_string(metadata_file)?;
-                        let metadata: DirectoryMetadata = serde_json::from_str(&file_contents)?;
-
-                        println!("{}", dir_name.to_string_lossy());
-                        println!("\tName: {}", metadata.name);
-                        println!("\tDescription: {}", metadata.description);
-                        println!();
-
-                        found_directory = true;
+        // Handle user input
+        if event::poll(std::time::Duration::from_millis(100)).unwrap() {
+            if let Event::Key(event) = event::read().unwrap() {
+                match event.code {
+                    // Quit the program or selection mode
+                    KeyCode::Char('q') => {
+                        exit = true;
                     }
+
+                    // Quit the program
+                    KeyCode::Char('e') => {
+                        exit = true;
+                    }
+
+                    // Move the selection up
+                    KeyCode::Char('k') => {
+                        if selection_index > 0 {
+                            selected_files[selection_index] = false;
+                            selection_index -= 1;
+                            selected_files[selection_index] = true;
+                        }
+                    }
+
+                    // Move the selection down
+                    KeyCode::Char('j') => {
+                        if selection_index < files.len() - 1 {
+                            selected_files[selection_index] = false;
+                            selection_index += 1;
+                            selected_files[selection_index] = true;
+                        }
+                    }
+
+                    // Move into a folder
+                    KeyCode::Char('l') => {
+                        let selected_file = &files[selection_index];
+                        if selected_file.is_dir() {
+                            files = fs::read_dir(selected_file)?
+                                .filter_map(Result::ok)
+                                .map(|entry| entry.path())
+                                .collect();
+                            selection_index = 0;
+                        } else {
+                            let error_message = format!("{} is not a directory", selected_file.display());
+                        }
+                    }
+
+                    // Move out of a folder
+                    KeyCode::Char('h') => {
+                        if let Some(parent) = files[0].parent() {
+                            files = fs::read_dir(parent)?
+                                .filter_map(Result::ok)
+                                .map(|entry| entry.path())
+                                .collect();
+                            selection_index = 0;
+                        }
+                    }
+                    // Other keys
+                    _ => {}
                 }
             }
         }
-    }
 
-    if !found_directory {
-        println!("No directories with metadata found.");
+        // Exit the program
+        if exit {
+            break;
+        }
     }
 
     Ok(())
-}
-
-fn print_help() {
-    println!("Usage: fm [command] [directory_name]");
-    println!("Commands:");
-    println!("  new | n | create      Create a new directory with metadata");
-    println!("  view                  View metadata of an existing directory");
-    println!("  remove | rm           Remove a directory and its metadata");
-    println!("  list                  List all directories with metadata");
-}
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        print_help();
-        return;
-    }
-
-    let command = &args[1];
-
-    match command.as_str() {
-        "new" | "n" | "create"=> {
-            if args.len() < 4 {
-                println!("Error: Directory name or description is missing.");
-                return;
-            }
-
-            let directory_name = &args[2];
-            let directory_description = &args[3];
-
-            match create_directory_with_metadata(directory_name, directory_description) {
-                Ok(_) => {
-                    println!("Directory '{}' created successfully.", directory_name);
-                }
-                Err(e) => eprintln!("Error creating directory: {}", e),
-            }
-        }
-        "view" => {
-            if args.len() < 3 {
-                println!("Error: Directory name is missing.");
-                return;
-            }
-
-            let directory_name = &args[2];
-
-            view_directory_metadata(directory_name)
-                .unwrap_or_else(|e| eprintln!("Error viewing directory metadata: {}", e));
-        }
-        "remove" | "rm" => {
-            if args.len() < 3 {
-                println!("Error: Directory name is missing.");
-                return;
-            }
-
-            let directory_name = &args[2];
-
-            match remove_directory_with_metadata(directory_name) {
-                Ok(_) => {
-                    println!("Directory '{}' removed successfully.", directory_name);
-                }
-                Err(e) => eprintln!("Error removing directory: {}", e),
-            }
-        }
-        "list" => {
-            list_directories_with_metadata()
-                .unwrap_or_else(|e| eprintln!("Error listing directories with metadata: {}", e));
-        }
-        _ => {
-            println!("Error: Invalid command '{}'", command);
-            print_help();
-        }
-    }
 }
